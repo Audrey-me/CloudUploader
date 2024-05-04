@@ -1,0 +1,109 @@
+#! /bin/bash
+
+
+display_text_duration () {
+    local duration=$1
+    local text=$2
+
+    echo "$text"
+    sleep "$duration"
+}
+
+# check if the IAM user has already been configured
+check_user (){ 
+    user_arn=$( aws sts get-caller-identity --query 'Arn' --output text 2>/dev/null)
+    display_text_duration 5 "Authenticating IAM user..."
+
+    if [ -z "$user_arn" ]; then
+        echo "user is not authenticated";
+    else 
+        iam_username=$(echo "$user_arn" | awk -F'/' '{print $NF}')
+        echo "Welcome $iam_username, you are authenticated."
+
+    fi
+}
+
+# check and create AWS bucket
+check_bucket (){
+    while true; do
+        local bucket_name=$1
+
+        # Remove leading and trailing whitespaces from the input
+        bucket_name="${bucket_name#"${bucket_name%%[![:space:]]*}"}"
+        bucket_name="${bucket_name%"${bucket_name##*[![:space:]]}"}"
+
+        if [ -z "$bucket_name" ]; then
+            echo "Bucket name not provided."
+            continue
+        fi 
+
+        # Check if the bucket name length is between 3 and 63 characters
+        if [ ${#bucket_name} -lt 3 ] || [ ${#bucket_name} -gt 63 ]; then
+            echo "Bucket name must be between 3 and 63 characters long."
+            continue
+        fi
+
+        # Check if the bucket name contains an underscore
+        if [[ "$bucket_name" == *_* ]]; then
+            echo "Bucket name cannot contain an underscore."
+            continue
+        fi
+
+        # Check if the bucket exists
+        if aws s3api head-bucket --bucket "$bucket_name" 2>/dev/null; then
+            echo "Bucket '$bucket_name' exists."
+            continue
+        else
+            echo "Bucket '$bucket_name' does not exist. Creating it..."
+            if aws s3 mb s3://"$bucket_name" --region us-east-1; then
+                echo "Bucket '$bucket_name' created."
+                break
+            else
+                echo "Failed to create bucket '$bucket_name'. Please try again."
+            fi
+        fi
+    done
+}clouduploader
+
+file_upload(){
+    check_user
+
+    # List existing buckets
+    echo "Existing buckets:"
+    aws s3 ls | awk '{print $3}'
+
+    read -p "Enter the name of the bucket you want to upload the file to, or enter a new bucket name: " bucket_name
+
+    # Check if the bucket name is an existing bucket
+    if aws s3 ls "s3://$bucket_name" 2>/dev/null; then
+        echo "Bucket '$bucket_name' exists."
+    else
+        # If the bucket doesn't exist, run check_bucket to ensure the new bucket name is valid
+        check_bucket "$bucket_name"
+    fi
+
+    echo "Enter the file paths of the files you want to upload (press Enter after each file, type 'done' when finished):"
+
+    # initialize an array to store the files
+    files=()
+    while true; do
+        read -p "File path (or 'done' to finish): " file_path
+        if [ "$file_path" == "done" ]; then 
+           break
+        elif [ -f "$file_path" ]; then
+           files+=($file_path)
+        else 
+          echo "File not found, please enter a valid file path or press "done" to finish."
+        fi
+    done
+
+    # upload each file on S3
+    for file in "${files[@]}"; do
+        echo "uploading file.. : $file"
+        aws s3 cp "$file" s3://$bucket_name/
+        echo "File uploaded successfully"
+    done
+}
+
+
+file_upload

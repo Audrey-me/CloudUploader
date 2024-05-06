@@ -63,7 +63,7 @@ check_bucket (){
             fi
         fi
     done
-}clouduploader
+}
 
 file_upload(){
     check_user
@@ -100,10 +100,8 @@ file_upload(){
     # upload each file on S3
     for file in "${files[@]}"; do
         echo "uploading file.. : $file"
-        aws s3 cp "$file" s3://$bucket_name/
-        echo "File uploaded successfully"
+        pv "$file" | aws s3 cp - s3://$bucket_name/$(basename "$file") && echo "Upload completed successfully."
     done
 }
-
 
 file_upload

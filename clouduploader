@@ -1,11 +1,18 @@
 #! /bin/bash
 
+# display colored messages for readablility
+RED='\033[31m'
+GREEN='\033[32m'
+YELLOW='\033[33m'
+RESET='\033[0m'
 
 display_text_duration () {
     local duration=$1
     local text=$2
+    local color=$3
 
-    echo "$text"
+# used the -e to make sure that the colors are not treated as normal string and intepreted correctly as colors
+    echo -e "$text" "$YELLOW"
     sleep "$duration"
 }
 
@@ -15,10 +22,10 @@ check_user (){
     display_text_duration 5 "Authenticating IAM user..."
 
     if [ -z "$user_arn" ]; then
-        echo "user is not authenticated";
+        echo -e "$RED" "user is not authenticated";
     else 
         iam_username=$(echo "$user_arn" | awk -F'/' '{print $NF}')
-        echo "Welcome $iam_username, you are authenticated."
+        echo -e "$GREEN" "Welcome $iam_username, you are authenticated."
 
     fi
 }
@@ -33,33 +40,33 @@ check_bucket (){
         bucket_name="${bucket_name%"${bucket_name##*[![:space:]]}"}"
 
         if [ -z "$bucket_name" ]; then
-            echo "Bucket name not provided."
+            echo  -e "$RED" "Bucket name not provided."
             continue
         fi 
 
         # Check if the bucket name length is between 3 and 63 characters
         if [ ${#bucket_name} -lt 3 ] || [ ${#bucket_name} -gt 63 ]; then
-            echo "Bucket name must be between 3 and 63 characters long."
+            echo  -e "$RED" "Bucket name must be between 3 and 63 characters long."
             continue
         fi
 
         # Check if the bucket name contains an underscore
         if [[ "$bucket_name" == *_* ]]; then
-            echo "Bucket name cannot contain an underscore."
+            echo  -e "$RED" "Bucket name cannot contain an underscore."
             continue
         fi
 
         # Check if the bucket exists
         if aws s3api head-bucket --bucket "$bucket_name" 2>/dev/null; then
-            echo "Bucket '$bucket_name' exists."
+            echo  -e "$RED" "Bucket '$bucket_name' exists."
             continue
         else
-            echo "Bucket '$bucket_name' does not exist. Creating it..."
+            echo  -e "$YELLOW" "Bucket '$bucket_name' does not exist. Creating it..."
             if aws s3 mb s3://"$bucket_name" --region us-east-1; then
-                echo "Bucket '$bucket_name' created."
+                echo  -e "$GREEN" "Bucket '$bucket_name' created."
                 break
             else
-                echo "Failed to create bucket '$bucket_name'. Please try again."
+                echo -e "$RED" "Failed to create bucket '$bucket_name'. Please try again."
             fi
         fi
     done
@@ -72,11 +79,11 @@ file_upload(){
     echo "Existing buckets:"
     aws s3 ls | awk '{print $3}'
 
-    read -p "Enter the name of the bucket you want to upload the file to, or enter a new bucket name: " bucket_name
+    read -p "$(echo -e $RESET)Enter the name of the bucket you want to upload the file to, or enter a new bucket name: " bucket_name
 
     # Check if the bucket name is an existing bucket
     if aws s3 ls "s3://$bucket_name" 2>/dev/null; then
-        echo "Bucket '$bucket_name' exists."
+        echo -e "$YELLOW" "Bucket '$bucket_name' exists."
     else
         # If the bucket doesn't exist, run check_bucket to ensure the new bucket name is valid
         check_bucket "$bucket_name"
@@ -87,20 +94,20 @@ file_upload(){
     # initialize an array to store the files
     files=()
     while true; do
-        read -p "File path (or 'done' to finish): " file_path
+        read -p "$(echo -e $RESET)File path (or 'done' to finish): " file_path
         if [ "$file_path" == "done" ]; then 
            break
         elif [ -f "$file_path" ]; then
            files+=($file_path)
         else 
-          echo "File not found, please enter a valid file path or press "done" to finish."
+          echo -e "$RED" "File not found, please enter a valid file path or press "done" to finish."
         fi
     done
 
     # upload each file on S3
     for file in "${files[@]}"; do
-        echo "uploading file.. : $file"
-        pv "$file" | aws s3 cp - s3://$bucket_name/$(basename "$file") && echo "Upload completed successfully."
+        echo  -e "$YELLOW" "uploading file.. : $file"
+        pv "$file" | aws s3 cp - s3://$bucket_name/$(basename "$file") && echo  -e "$GREEN" "Upload completed successfully."
     done
 }
 
